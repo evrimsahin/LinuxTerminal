@@ -79,14 +79,21 @@ int count(char **str) {
 void add_history(char *str) {
     char *temp = malloc(100);
     strcpy(temp, str);
+    int i;
     if (history_size == HISTORY_COUNT) {
-        int i;
-        for (i = 0; i < history_size - 1; i++) {
-            history[i] = history[i + 1];
+        for (i = HISTORY_COUNT - 1; i > 0; i--) {
+            history[i] = history[i - 1];
         }
-        history[history_size - 1] = temp;
-    } else {
-        history[history_size++] = temp;
+        history[0] = temp;
+    } else if(history_size>0){
+        for (i = history_size; i > 0; i--) {
+            history[i] = history[i - 1];
+        }
+        history[0] = temp;
+        history_size++;
+    } else{
+        history[0] = temp;
+        history_size++;
     }
 }
 
@@ -107,13 +114,12 @@ void check_line(char **paths, char *line, int *should_run) {
     if (strlen(line) == 0) {
         return;
     }
-
     if (strcmp(line, "exit") == 0) {
         *should_run = 0;
     } else if (strcmp(line, "history") == 0) {
         add_history(line);
         print_history();
-    } else if (line[0] == '!') {
+    } else if (strstr(line, "history -i") != 0) {
         execute_history(paths, line, should_run);
     } else {
         add_history(line);
@@ -123,13 +129,16 @@ void check_line(char **paths, char *line, int *should_run) {
 
 void execute_history(char **paths, char *line, int *should_run) {
     size_t length = strlen(line);
-    if (length == 2 && line[1] == '!' && history_size >= 1) {
-        check_line(paths, history[history_size - 1], should_run);
-    } else if (length == 2 && line[1] > '0' && line[1] <= '9' && history_size >= (line[1] - '0')) {
-        check_line(paths, history[line[1] - '0' - 1], should_run);
-    } else if (strcmp(line, "!10") == 0 && history_size == 10) {
-        check_line(paths, history[9], should_run);
-    } else {
+    if(length < 12){
+        printf("Command doesnt include index\n");
+    }
+
+    if(length > 12){
+        printf("Command index not greater than 9\n");
+    }
+    if (line[11] >= '0' && line[11] <= '9' && history_size >= (line[11] - '0')) {
+        check_line(paths, history[line[11] - '0'], should_run);
+    }else{
         printf("Command not found in history.\n");
     }
 }
@@ -180,8 +189,6 @@ void execute_command(char **paths, char *command) {
     if (!path_is_good) {
         printf("Incorrect Command.\n");
     }
-
-
 }
 
 
