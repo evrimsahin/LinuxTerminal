@@ -5,27 +5,43 @@
 #include <string.h>
 #include <ctype.h>
 
-
-
 #define MAX_LINE 80 /* The maximum length command */
 #define HISTORY_COUNT 10 /* The maximum length of history */
 
 char *history[HISTORY_COUNT];
 int history_size = 0;
-void exexute_command(char **paths, char *command);
-void exexute_history(char **paths, char *line, int *should_run);
-void welcomeScreen() {
-    printf("\n\t============================================\n");
-    printf("\t               Simple C Shell\n");
-    printf("\t--------------------------------------------\n");
-    printf("\t               Version 1.0\n");
-    printf("\t============================================\n");
-    printf("\n\n");
-}
 
-/*
- * String Processing Methods
- */
+void execute_command(char **paths, char *command);
+
+void execute_history(char **paths, char *line, int *should_run);
+
+char **split(char *str, char *token);
+
+int count(char **str);
+
+char *trim(char *str);
+
+void add_history(char *str);
+
+void print_history();
+
+void batch_mode(char **path, char *file_name);
+
+void shell_mode(char **paths);
+
+int main(void) {
+    char inputBuffer[MAX_LINE];
+    char **paths = split(getenv("PATH"), ":");
+    char *args[MAX_LINE / 2 + 1];
+
+    if (args == 2) {
+        printf("%s\n", inputBuffer);
+        batch_mode(paths, inputBuffer);
+    } else {
+        shell_mode(paths);
+    }
+    return 0;
+}
 
 char *trim(char *str) {
     char *end;
@@ -51,26 +67,6 @@ char *trim(char *str) {
     return str;
 }
 
-char **split(char *str, char *token) {
-
-    char **res = NULL;
-    char *temp = strtok(str, token);
-    int n_spaces = 0;
-    while (temp) {
-        res = realloc(res, sizeof(char *) * ++n_spaces);
-
-        if (res == NULL) {
-            exit(-1);
-        }
-        res[n_spaces - 1] = temp;
-        temp = strtok(NULL, token);
-    }
-    res = realloc(res, sizeof(char *) * (n_spaces + 1));
-    res[n_spaces] = 0;
-    return res;
-
-
-}
 
 int count(char **str) {
     int cnt = 0, i;
@@ -78,30 +74,6 @@ int count(char **str) {
         cnt++;
     }
     return cnt;
-}
-
-/*
- * History Handler
- */
-
-void load_history() {
-    FILE *file = fopen("history.txt", "r");
-    if (file != NULL) {
-        char *command = malloc(sizeof(char) * MAX_LINE);
-        while (fgets(command, MAX_LINE, file) != NULL) {
-            command = trim(command);
-            history[history_size++] = strdup(command);
-        }
-    }
-}
-
-void save_history() {
-    FILE *file = fopen("history.txt", "w");
-    int i = 0;
-    for (i = 0; i < history_size; i++) {
-        fputs(history[i], file);
-        fputs("\n", file);
-    }
 }
 
 void add_history(char *str) {
@@ -123,7 +95,7 @@ void print_history() {
         printf("History Empty.\n");
     }
     int i = 0;
-    for(int i = 0; i<history_size;i++){
+    for (i = 0; i < history_size; i++) {
         printf("%d  %s\n", i, history[i]);
     }
 }
@@ -142,14 +114,14 @@ void check_line(char **paths, char *line, int *should_run) {
         add_history(line);
         print_history();
     } else if (line[0] == '!') {
-        exexute_history(paths, line, should_run);
+        execute_history(paths, line, should_run);
     } else {
         add_history(line);
-        exexute_command(paths, line);
+        execute_command(paths, line);
     }
 }
 
-void exexute_history(char **paths, char *line, int *should_run) {
+void execute_history(char **paths, char *line, int *should_run) {
     size_t length = strlen(line);
     if (length == 2 && line[1] == '!' && history_size >= 1) {
         check_line(paths, history[history_size - 1], should_run);
@@ -162,9 +134,6 @@ void exexute_history(char **paths, char *line, int *should_run) {
     }
 }
 
-/**
- * Check Path
- */
 
 int check_path(char *path, char **args, int background) {
     if (access(path, 0) != -1) {
@@ -184,12 +153,12 @@ int check_path(char *path, char **args, int background) {
 }
 
 
-void exexute_command(char **paths, char *command) {
+void execute_command(char **paths, char *command) {
     int background = 0;
 
-    if (command[strlen(command)-1] == '&') {
+    if (command[strlen(command) - 1] == '&') {
         background = 1;
-        command[strlen(command)-1] = '\0';
+        command[strlen(command) - 1] = '\0';
     }
 
     char **args = split(command, " ");
@@ -219,16 +188,15 @@ void exexute_command(char **paths, char *command) {
 void shell_mode(char **paths) {
     int should_run = 1;
     while (should_run) {
-        printf("shell> ");
-        fflush(stdout);
+        printf("myshell: ");
+        fflush(NULL);
 
         char line[MAX_LINE];
-        if(fgets(line, MAX_LINE, stdin) == NULL){
+        if (fgets(line, MAX_LINE, stdin) == NULL) {
             exit(0);
         }
-
-        if(line == NULL){
-          exit(1);
+        if (line == NULL) {
+            exit(1);
         }
         check_line(paths, line, &should_run);
     }
@@ -246,25 +214,29 @@ void batch_mode(char **path, char *file_name) {
             printf("%s", command);
             check_line(path, command, &should_run);
         }
-
         if (should_run) {
             printf("File should end with exit command");
         }
     }
 }
 
-int main(int argc, char *const argv[]) {
+char **split(char *str, char *token) {
 
-    load_history();
-    char **paths = split(getenv("PATH"), ":");
+    char **res = NULL;
+    char *temp = strtok(str, token);
+    int n_spaces = 0;
+    while (temp) {
+        res = realloc(res, sizeof(char *) * ++n_spaces);
 
-    if (argc == 2) {
-        printf("%s\n", argv[1]);
-        batch_mode(paths, argv[1]);
-    } else {
-        welcomeScreen();
-        shell_mode(paths);
+        if (res == NULL) {
+            exit(-1);
+        }
+        res[n_spaces - 1] = temp;
+        temp = strtok(NULL, token);
     }
-    save_history();
-    return 0;
+    res = realloc(res, sizeof(char *) * (n_spaces + 1));
+    res[n_spaces] = 0;
+    return res;
+
+
 }
