@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <ctype.h>
+#include <signal.h>
 
 #define MAX_LINE 80 /* The maximum length command */
 #define HISTORY_COUNT 10 /* The maximum length of history */
@@ -28,6 +29,8 @@ void print_history();
 void batch_mode(char **path, char *file_name);
 
 void shell_mode(char **paths);
+
+void line_operator(char **paths, char *line, char *result);
 
 int main(void) {
     char inputBuffer[MAX_LINE];
@@ -85,13 +88,13 @@ void add_history(char *str) {
             history[i] = history[i - 1];
         }
         history[0] = temp;
-    } else if(history_size>0){
+    } else if (history_size > 0) {
         for (i = history_size; i > 0; i--) {
             history[i] = history[i - 1];
         }
         history[0] = temp;
         history_size++;
-    } else{
+    } else {
         history[0] = temp;
         history_size++;
     }
@@ -121,24 +124,46 @@ void check_line(char **paths, char *line, int *should_run) {
         print_history();
     } else if (strstr(line, "history -i") != 0) {
         execute_history(paths, line, should_run);
+    } else if (strstr(line, "path")) {
+        add_history(line);
+        if (strstr(line, "+ ")) {
+            char *result = malloc(strlen(paths) + strlen(line) + 1);
+            line_operator(paths, line, result);
+            printf("%s\n", result);
+        }else
+        printf("%s\n",paths[0]);
     } else {
         add_history(line);
         execute_command(paths, line);
     }
 }
 
+void line_operator(char **paths, char *line, char *result) {
+
+    char *token = strtok(line, "+ ");
+
+    int i = 0;
+    for (i = 0; i < 1; i++) {
+        token = strtok(NULL, "+ ");
+    }
+    strcpy(result, paths[0]);
+    strcat(result, token);
+
+
+}
+
 void execute_history(char **paths, char *line, int *should_run) {
     size_t length = strlen(line);
-    if(length < 12){
+    if (length < 12) {
         printf("Command doesnt include index\n");
     }
 
-    if(length > 12){
+    if (length > 12) {
         printf("Command index not greater than 9\n");
     }
     if (line[11] >= '0' && line[11] <= '9' && history_size >= (line[11] - '0')) {
         check_line(paths, history[line[11] - '0'], should_run);
-    }else{
+    } else {
         printf("Command not found in history.\n");
     }
 }
@@ -190,7 +215,6 @@ void execute_command(char **paths, char *command) {
         printf("Incorrect Command.\n");
     }
 }
-
 
 void shell_mode(char **paths) {
     int should_run = 1;
