@@ -5,12 +5,24 @@
 #include <string.h>
 #include <ctype.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <limits.h>
 
 #define MAX_LINE 80 /* The maximum length command */
 #define HISTORY_COUNT 10 /* The maximum length of history */
 
 char *history[HISTORY_COUNT];
 int history_size = 0;
+
+enum RedirectionType {
+
+    Default = 1,
+    StdOutTruncate = 2,
+    StdOutAppend = 4,
+    StdIn = 8,
+    StdErr = 16
+
+};
 
 void execute_command(char **paths, char *command);
 
@@ -35,6 +47,11 @@ void line_operator(char **paths, char *line, char *result);
 void commandSeperator(char *s, char **a);
 
 void path_subtract(char **paths, char *line, char *result);
+
+int redirect(char *file, int redirectionDest, int flags, int mode);
+
+int redirection(enum RedirectionType type, char *inFile, char *outFile);
+
 
 int main(void) {
     char inputBuffer[MAX_LINE];
@@ -176,27 +193,27 @@ void path_subtract(char **paths, char *line, char *result) {
 
     int i, j, found;
     int strLen, wordLen;
-    strLen  = strlen(paths[0]);  // Find length of string
+    strLen = strlen(paths[0]);  // Find length of string
     wordLen = strlen(token); // Find length of word
 
 
     int x = 0;
     /* Run a loop from starting index of string to length of string - word length */
-    for(i=0; i<strLen - wordLen + 1; i++){
+    for (i = 0; i < strLen - wordLen + 1; i++) {
 
         // Match word at current position
         found = 1;
-        for(j=0; j<wordLen; j++){
+        for (j = 0; j < wordLen; j++) {
             // If word is not matched
-            if(paths[0][i + j] != token[j]){
+            if (paths[0][i + j] != token[j]) {
                 found = 0;
                 break;
             }
         }
 
         // If word have been found then print found message
-        if(found == 1){
-            for(x; x < i; x++){
+        if (found == 1) {
+            for (x; x < i; x++) {
                 char ch = paths[0][x];
 
                 strncat(result, &ch, 1);
@@ -204,7 +221,7 @@ void path_subtract(char **paths, char *line, char *result) {
             x = x + wordLen;
         }
     }
-    for(x ; x < strLen; x++){
+    for (x; x < strLen; x++) {
         char ch = paths[0][x];
         strncat(result, &ch, 1);
     }
@@ -271,7 +288,40 @@ void execute_history(char **paths, char *line, int *should_run) {
 int check_path(char *path, char **args, int background) {
     if (access(path, 0) != -1) {
         pid_t pid = fork();
+        enum RedirectionType redType = Default;
+        int i;
+        char *inFile = NULL;
+        char *outFile = NULL;
+        int firstRedirOpPos = INT_MAX;
         if (pid == 0) {
+            for (i = 0; args[i] != NULL; i++) {
+                if (strcmp(args[i], ">") == 0) {
+                    redType |= StdOutTruncate;
+                    outFile = args[i + 1];
+                    firstRedirOpPos = i < firstRedirOpPos ? i : firstRedirOpPos;
+                }
+                if (strcmp(args[i], ">>") == 0) {
+                    redType |= StdOutAppend;
+                    outFile = args[i + 1];
+                    firstRedirOpPos = i < firstRedirOpPos ? i : firstRedirOpPos;
+                }
+                if (strcmp(args[i], "<") == 0) {
+                    redType |= StdIn;
+                    inFile = args[i + 1];
+                    firstRedirOpPos = i < firstRedirOpPos ? i : firstRedirOpPos;
+                }
+                if (strcmp(args[i], "2>") == 0) {
+                    redType |= StdErr;
+                    outFile = args[i + 1];
+                    firstRedirOpPos = i < firstRedirOpPos ? i : firstRedirOpPos;
+                }
+            }
+
+            if (redType != Default) {
+                printf("inFile: %s\noutFile: %s\n", inFile, outFile);
+                args[firstRedirOpPos] = (char *) NULL; // By setting it to NULL, we limit args to arguments priot to it in execv().
+                redirection(redType, inFile, outFile);
+            }
             execv(path, args);
             exit(0);
         } else {
@@ -283,6 +333,60 @@ int check_path(char *path, char **args, int background) {
         }
     }
     return 0;
+}
+
+int redirect(char *file, int redirectionDest, int flags, int mode) {
+    int fileDesc;
+
+    // 1. Open the file.
+    fileDesc = open(file, flags, mode);
+    if (fileDesc == -1) {
+        fprintf(stderr, "Failed to open the file.");
+        return 1;
+    }
+    // 2. Duplicate the desired descriptor.
+    if (dup2(fileDesc, redirectionDest) == -1) {
+        switch (redirectionDest) {
+            case STDIN_FILENO:
+                fprintf(stderr, "Failed to redirect STDIN.");
+                break;
+            case STDOUT_FILENO:
+                fprintf(stderr, "Failed to redirect STDOUT.");
+                break;
+            case STDERR_FILENO:
+                fprintf(stderr, "Failed to redirect STDERR.");
+                break;
+        }
+        return 1;
+    }
+    // 3. Close the file since we don't need it anymore.
+    if (close(fileDesc) == -1) {
+        fprintf(stderr, "Failed to close the file.");
+        return 1;
+    }
+}
+
+
+int redirection(enum RedirectionType type, char *inFile, char *outFile) {
+    int writingMode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+    int readingMode = S_IRUSR | S_IRGRP | S_IROTH;
+    int result = 0;
+
+    if (type & StdOutTruncate) {
+        result = redirect(outFile, STDOUT_FILENO, O_WRONLY | O_CREAT | O_TRUNC, writingMode);
+    } else if (type & StdOutAppend) {
+        result = redirect(outFile, STDOUT_FILENO, O_WRONLY | O_CREAT | O_APPEND, writingMode);
+    }
+
+    if (type & StdIn) {
+        result = redirect(inFile, STDIN_FILENO, O_RDONLY, readingMode);
+    }
+
+    if (type & StdErr) {
+        result = redirect(outFile, STDERR_FILENO, O_WRONLY | O_CREAT | O_APPEND, writingMode);
+    }
+
+    return result;
 }
 
 
