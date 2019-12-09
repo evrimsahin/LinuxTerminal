@@ -32,6 +32,10 @@ void shell_mode(char **paths);
 
 void line_operator(char **paths, char *line, char *result);
 
+void commandSeperator(char *s, char **a);
+
+void path_subtract(char **paths, char *line, char *result);
+
 int main(void) {
     char inputBuffer[MAX_LINE];
     char **paths = split(getenv("PATH"), ":");
@@ -127,15 +131,112 @@ void check_line(char **paths, char *line, int *should_run) {
     } else if (strstr(line, "path")) {
         add_history(line);
         if (strstr(line, "+ ")) {
-            char *result = malloc(strlen(paths) + strlen(line) + 1);
+            char *result = NULL;
+            result = malloc(strlen(paths) + strlen(line) + 1);
             line_operator(paths, line, result);
-            printf("%s\n", result);
-        }else
-        printf("%s\n",paths[0]);
+            strcpy(paths[0], result);
+            putenv(paths[0]);
+        } else if (strstr(line, "- ")) {
+            char *result = NULL;
+            result = malloc(strlen(paths));
+            path_subtract(paths, line, result);
+            strcpy(paths[0], result);
+            putenv(paths[0]);
+        } else
+            printf("%s\n", getenv("PATH"));
+    } else if (strstr(line, ";")) {
+        char *a[10];
+        int i = 0;
+        int count = 0;
+        for (i = 0; i < strlen(line); i++) {
+            if (line[i] == ';')
+                count++;
+        }
+        commandSeperator(line, a);
+        for (int i = 0; i < count + 1; i++) {
+            add_history(a[i]);
+            execute_command(paths, a[i]);
+        }
+
+
     } else {
         add_history(line);
         execute_command(paths, line);
     }
+}
+
+void path_subtract(char **paths, char *line, char *result) {
+    char *token = strtok(line, "- ");
+
+    int k = 0;
+    for (k = 0; k < 1; k++) {
+        token = strtok(NULL, "- ");
+    }
+
+
+    int i, j, found;
+    int strLen, wordLen;
+    strLen  = strlen(paths[0]);  // Find length of string
+    wordLen = strlen(token); // Find length of word
+
+
+    int x = 0;
+    /* Run a loop from starting index of string to length of string - word length */
+    for(i=0; i<strLen - wordLen + 1; i++){
+
+        // Match word at current position
+        found = 1;
+        for(j=0; j<wordLen; j++){
+            // If word is not matched
+            if(paths[0][i + j] != token[j]){
+                found = 0;
+                break;
+            }
+        }
+
+        // If word have been found then print found message
+        if(found == 1){
+            for(x; x < i; x++){
+                char ch = paths[0][x];
+
+                strncat(result, &ch, 1);
+            }
+            x = x + wordLen;
+        }
+    }
+    for(x ; x < strLen; x++){
+        char ch = paths[0][x];
+        strncat(result, &ch, 1);
+    }
+}
+
+void commandSeperator(char *s, char **a) {
+
+
+    char *str = strdup(s);
+    char *token = strtok(str, ";");
+    int j = 0;
+    while (token) {
+
+        int count = 0;
+
+        int i;
+        for (i = 0; token[i]; i++) {
+            if (token[i] != ' ')
+                token[count++] = token[i];
+        }
+
+        token[count] = '\0';
+
+        a[j] = strdup(token);
+        j++;
+
+        int size = strlen(token);
+
+        token = strtok(NULL, ";");
+    }
+
+    return;
 }
 
 void line_operator(char **paths, char *line, char *result) {
@@ -148,8 +249,6 @@ void line_operator(char **paths, char *line, char *result) {
     }
     strcpy(result, paths[0]);
     strcat(result, token);
-
-
 }
 
 void execute_history(char **paths, char *line, int *should_run) {
