@@ -13,6 +13,9 @@
 
 char *history[HISTORY_COUNT];
 int history_size = 0;
+int path_index = 0;
+int myMyPathSize = 0;
+char *mypaths[100];
 
 enum RedirectionType {
 
@@ -40,33 +43,72 @@ void print_history();
 
 void batch_mode(char **path, char *file_name);
 
-void shell_mode(char **paths);
+void shell_mode(char **paths, char ** mypaths);
 
-void line_operator(char **paths, char *line, char *result);
+void line_operator(char **paths, char *line);
 
 void commandSeperator(char *s, char **a);
 
-void path_subtract(char **paths, char *line, char *result);
+void path_subtract(char **paths, char *line);
 
 int redirect(char *file, int redirectionDest, int flags, int mode);
 
 int redirection(enum RedirectionType type, char *inFile, char *outFile);
 
+void split_paths(char *str, char *token,char **path);
 
-int main(void) {
+void check_line(char **paths, char *line, int *should_run, char ** mypaths);
+
+        int main(void) {
     char inputBuffer[MAX_LINE];
-    char **paths = split(getenv("PATH"), ":");
+    char *path[100];
+    split_paths(getenv("PATH"),":",path);
     char *args[MAX_LINE / 2 + 1];
-
     if (args == 2) {
         printf("%s\n", inputBuffer);
-        batch_mode(paths, inputBuffer);
+        batch_mode(path, inputBuffer);
     } else {
-        shell_mode(paths);
+        shell_mode(path, mypaths);
     }
     return 0;
 }
+void split_paths(char *str, char *token, char **path){
+    char **res = NULL;
+    char *temp = strtok(str, token);
+    int n_spaces = 0;
 
+    while (temp) {
+        res = realloc(res, sizeof(char *) * ++n_spaces);
+        path[path_index] = strdup(temp);
+        if (res == NULL) {
+            exit(-1);
+        }
+        res[n_spaces - 1] = temp;
+        temp = strtok(NULL, token);
+        path_index++;
+    }
+
+}
+char **split(char *str, char *token) {
+
+    char **res = NULL;
+    char *temp = strtok(str, token);
+    int n_spaces = 0;
+    while (temp) {
+        res = realloc(res, sizeof(char *) * ++n_spaces);
+
+        if (res == NULL) {
+            exit(-1);
+        }
+        res[n_spaces - 1] = temp;
+        temp = strtok(NULL, token);
+    }
+    res = realloc(res, sizeof(char *) * (n_spaces + 1));
+    res[n_spaces] = 0;
+    return res;
+
+
+}
 char *trim(char *str) {
     char *end;
 
@@ -132,7 +174,7 @@ void print_history() {
 }
 
 
-void check_line(char **paths, char *line, int *should_run) {
+void check_line(char **paths, char *line, int *should_run, char ** mypaths) {
     line = trim(line);
 
     if (strlen(line) == 0) {
@@ -148,19 +190,18 @@ void check_line(char **paths, char *line, int *should_run) {
     } else if (strstr(line, "path")) {
         add_history(line);
         if (strstr(line, "+ ")) {
-            char *result = NULL;
-            result = malloc(strlen(paths) + strlen(line) + 1);
-            line_operator(paths, line, result);
-            strcpy(paths[0], result);
-            putenv(paths[0]);
+            line_operator(mypaths, line);
+            myMyPathSize++;
+
         } else if (strstr(line, "- ")) {
-            char *result = NULL;
-            result = malloc(strlen(paths));
-            path_subtract(paths, line, result);
-            strcpy(paths[0], result);
-            putenv(paths[0]);
+            path_subtract(mypaths, line);
+
         } else
-            printf("%s\n", getenv("PATH"));
+            for(int i = 0; i<myMyPathSize;i++) {
+                if(mypaths[i] != 0)
+                    printf("%s\n", mypaths[i]);
+
+            }
     } else if (strstr(line, ";")) {
         char *a[10];
         int i = 0;
@@ -182,7 +223,7 @@ void check_line(char **paths, char *line, int *should_run) {
     }
 }
 
-void path_subtract(char **paths, char *line, char *result) {
+void path_subtract(char **mynew, char *line) {
     char *token = strtok(line, "- ");
 
     int k = 0;
@@ -191,39 +232,15 @@ void path_subtract(char **paths, char *line, char *result) {
     }
 
 
-    int i, j, found;
-    int strLen, wordLen;
-    strLen = strlen(paths[0]);  // Find length of string
-    wordLen = strlen(token); // Find length of word
+    int t=0;
+    for(t = 0; t < myMyPathSize; t++){
+        char mystr[strlen(mynew[t])];
 
+        strcpy(mystr, mynew[t]); //Copies the current path to the mystr in order to iterate path by path.
 
-    int x = 0;
-    /* Run a loop from starting index of string to length of string - word length */
-    for (i = 0; i < strLen - wordLen + 1; i++) {
-
-        // Match word at current position
-        found = 1;
-        for (j = 0; j < wordLen; j++) {
-            // If word is not matched
-            if (paths[0][i + j] != token[j]) {
-                found = 0;
-                break;
-            }
+        if(strcmp(mystr, token) == 0){
+            mynew[t] = NULL;
         }
-
-        // If word have been found then print found message
-        if (found == 1) {
-            for (x; x < i; x++) {
-                char ch = paths[0][x];
-
-                strncat(result, &ch, 1);
-            }
-            x = x + wordLen;
-        }
-    }
-    for (x; x < strLen; x++) {
-        char ch = paths[0][x];
-        strncat(result, &ch, 1);
     }
 }
 
@@ -256,7 +273,7 @@ void commandSeperator(char *s, char **a) {
     return;
 }
 
-void line_operator(char **paths, char *line, char *result) {
+void line_operator(char **paths, char *line) {
 
     char *token = strtok(line, "+ ");
 
@@ -264,8 +281,7 @@ void line_operator(char **paths, char *line, char *result) {
     for (i = 0; i < 1; i++) {
         token = strtok(NULL, "+ ");
     }
-    strcpy(result, paths[0]);
-    strcat(result, token);
+    paths[myMyPathSize]=strdup(token);
 }
 
 void execute_history(char **paths, char *line, int *should_run) {
@@ -278,7 +294,7 @@ void execute_history(char **paths, char *line, int *should_run) {
         printf("Command index not greater than 9\n");
     }
     if (line[11] >= '0' && line[11] <= '9' && history_size >= (line[11] - '0')) {
-        check_line(paths, history[line[11] - '0'], should_run);
+        check_line(paths, history[line[11] - '0'], should_run,mypaths);
     } else {
         printf("Command not found in history.\n");
     }
@@ -419,7 +435,7 @@ void execute_command(char **paths, char *command) {
     }
 }
 
-void shell_mode(char **paths) {
+void shell_mode(char **paths, char ** mypaths) {
     int should_run = 1;
     while (should_run) {
         printf("myshell: ");
@@ -432,7 +448,7 @@ void shell_mode(char **paths) {
         if (line == NULL) {
             exit(1);
         }
-        check_line(paths, line, &should_run);
+        check_line(paths, line, &should_run, mypaths);
     }
 }
 
@@ -446,7 +462,7 @@ void batch_mode(char **path, char *file_name) {
         char command[MAX_LINE];
         while (should_run && fgets(command, MAX_LINE, file) != NULL) {
             printf("%s", command);
-            check_line(path, command, &should_run);
+            check_line(path, command, &should_run,mypaths);
         }
         if (should_run) {
             printf("File should end with exit command");
@@ -454,23 +470,3 @@ void batch_mode(char **path, char *file_name) {
     }
 }
 
-char **split(char *str, char *token) {
-
-    char **res = NULL;
-    char *temp = strtok(str, token);
-    int n_spaces = 0;
-    while (temp) {
-        res = realloc(res, sizeof(char *) * ++n_spaces);
-
-        if (res == NULL) {
-            exit(-1);
-        }
-        res[n_spaces - 1] = temp;
-        temp = strtok(NULL, token);
-    }
-    res = realloc(res, sizeof(char *) * (n_spaces + 1));
-    res[n_spaces] = 0;
-    return res;
-
-
-}
